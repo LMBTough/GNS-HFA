@@ -20,8 +20,7 @@ def setup_seed(seed):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     
-# setup_seed(2023)
-
+setup_seed(2023)
 
 def arg_parse():
     parser = argparse.ArgumentParser(description='')
@@ -44,7 +43,6 @@ def arg_parse():
     parser.add_argument("--eps", type=int, default=16)
     
     args = parser.parse_args()
-    # args.opt_path = os.path.join(BASE_ADV_PATH, 'model_{}-method_{}'.format(args.model_name, args.attack))
     args.opt_path = os.path.join(BASE_ADV_PATH,f"model_{args.model_name}-method_{args.attack}-ti_{args.ti}-mi_{args.mi}-scale_{args.scale}-remove_{args.remove_extreme}-mhf_{args.mhf}-u_{args.u}-s_{args.s}-N_{args.N}-eps_{args.eps}")
     if not os.path.exists(args.opt_path):
         os.makedirs(args.opt_path)
@@ -62,11 +60,7 @@ if __name__ == '__main__':
         attack_method = getattr(methods, args.attack)(args.model_name)
     elif args.attack == "SSA":
         attack_method = getattr(methods, args.attack)(args.model_name,ti=args.ti,mi=args.mi,more_high_freq=args.mhf)
-    # elif args.attack == "TGRSSA":
-    #     attack_method = getattr(methods, args.attack)(args.model_name,ti=args.ti,mi=args.mi,scale=args.scale,extreme=args.remove_extreme,more_high_freq=args.mhf)
-    # elif args.attack == "TGRGRAD":
-    #     attack_method = getattr(methods, args.attack)(args.model_name)
-    elif args.attack == "TGRGRADSSA":
+    elif args.attack == "GNS_HFE":
         attack_method = getattr(methods, args.attack)(args.model_name,ti=args.ti,mi=args.mi,scale=args.scale,extreme=args.remove_extreme,more_high_freq=args.mhf,u=args.u,s=args.s,N=args.N,epsilon=args.eps/255)
     else:
         attack_method = getattr(methods, args.attack)(args.model_name)
@@ -77,12 +71,6 @@ if __name__ == '__main__':
         batch_x = batch_data[0]
         batch_y = batch_data[1]
         batch_name = batch_data[3]
-
         adv_inps, loss_info = attack_method(batch_x, batch_y)
         attack_method._save_images(adv_inps, batch_name, args.opt_path)
-        if loss_info is not None:
-            all_loss_info[batch_name] = loss_info
         pbar.update(1)
-    if loss_info is not None:
-        with open(os.path.join(args.opt_path, 'loss_info.json'), 'wb') as opt:
-            pkl.dump(all_loss_info, opt)
