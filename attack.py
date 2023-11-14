@@ -32,18 +32,13 @@ def arg_parse():
     parser.add_argument('--filename_prefix', type=str, default='', help='')
     parser.add_argument('--ti', action='store_true', default=False, help='whether to use TI')
     parser.add_argument('--mi', action='store_true', default=False, help='whether to use MI')
-    parser.add_argument('--scale', action='store_true', default=False, help='whether to use grad scale')
-    parser.add_argument('--remove_extreme', action='store_true', default=False, help='whether to remove extreme grad')
     parser.add_argument('--mhf', default="",choices=["","noise","search","both"], help='whether to add more high freq')
-    
-    parser.add_argument('--u', type=float, default=0.6)
-    parser.add_argument('--s', type=float, default=2)
-    
+    parser.add_argument('--u', type=float, default=1)    
     parser.add_argument("--N", type=int, default=20)
     parser.add_argument("--eps", type=int, default=16)
     
     args = parser.parse_args()
-    args.opt_path = os.path.join(BASE_ADV_PATH,f"model_{args.model_name}-method_{args.attack}-ti_{args.ti}-mi_{args.mi}-scale_{args.scale}-remove_{args.remove_extreme}-mhf_{args.mhf}-u_{args.u}-s_{args.s}-N_{args.N}-eps_{args.eps}")
+    args.opt_path = os.path.join(BASE_ADV_PATH,f"model_{args.model_name}-method_{args.attack}-ti_{args.ti}-mi_{args.mi}-mhf_{args.mhf}-u_{args.u}-N_{args.N}-eps_{args.eps}")
     if not os.path.exists(args.opt_path):
         os.makedirs(args.opt_path)
     return args
@@ -61,7 +56,7 @@ if __name__ == '__main__':
     elif args.attack == "SSA":
         attack_method = getattr(methods, args.attack)(args.model_name,ti=args.ti,mi=args.mi,more_high_freq=args.mhf)
     elif args.attack == "GNS_HFE":
-        attack_method = getattr(methods, args.attack)(args.model_name,ti=args.ti,mi=args.mi,scale=args.scale,extreme=args.remove_extreme,more_high_freq=args.mhf,u=args.u,s=args.s,N=args.N,epsilon=args.eps/255)
+        attack_method = getattr(methods, args.attack)(args.model_name,ti=args.ti,mi=args.mi,more_high_freq=args.mhf,u=args.u,N=args.N,epsilon=args.eps/255)
     else:
         attack_method = getattr(methods, args.attack)(args.model_name)
     pbar = tqdm(total=len(data_loader))
