@@ -481,9 +481,6 @@ class GNS_HFE(BaseAttack):
         self.decay = decay
         self.image_size = 224
         self.crop_length = 16
-        self.sample_num_batches = sample_num_batches
-        self.max_num_batches = int((224/16)**2)
-        assert self.sample_num_batches <= self.max_num_batches
         self.T_kernel = gkern(7, 3)
         self.momentum = 1.0
         self.image_width = 224
@@ -501,7 +498,6 @@ class GNS_HFE(BaseAttack):
         if self.scale:
             self._register_model()
         self.u = u
-        self.s = s
 
     def _register_model(self):
         def attn_tgr(module, grad_in, grad_out, gamma):
@@ -641,8 +637,11 @@ class GNS_HFE(BaseAttack):
         grad = 0
         momentum = torch.zeros_like(inps).cuda()
         unnorm_inps = self._mul_std_add_mean(inps)
-        perts = torch.zeros_like(unnorm_inps).cuda()
-        perts.requires_grad_()
+        images_min = clip_by_tensor(unnorm_inps - self.epsilon, 0.0, 1.0)
+        images_max = clip_by_tensor(unnorm_inps + self.epsilon, 0.0, 1.0)
+        grad = 0
+        x = unnorm_inps.clone().detach()
+        x.requires_grad = True
 
         for i in range(self.steps):
             if self.scale:
