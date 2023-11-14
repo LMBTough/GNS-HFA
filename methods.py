@@ -473,13 +473,12 @@ class TGR(BaseAttack):
 
 
 class GNS_HFE(BaseAttack):
-    def __init__(self, model_name, sample_num_batches=130, steps=10, epsilon=16/255, target=False, decay=1.0, ti=False, mi=False, scale=False, extreme=False,u=0.6,s=2,more_high_freq="",N=20):
+    def __init__(self, model_name, sample_num_batches=130, steps=10, epsilon=16/255, target=False, decay=1.0, ti=False, mi=False,scale=False,u=0.6,s=2,more_high_freq="",N=20):
         super(GNS_HFE, self).__init__('GNS_HFE', model_name, target)
         self.epsilon = epsilon
         self.steps = steps
         self.step_size = self.epsilon/self.steps
         self.decay = decay
-
         self.image_size = 224
         self.crop_length = 16
         self.sample_num_batches = sample_num_batches
@@ -489,28 +488,24 @@ class GNS_HFE(BaseAttack):
         self.momentum = 1.0
         self.image_width = 224
         self.N = N
-        # self.N = 10
         self.sigma = 16
         self.rho = 0.5
         self.ti = ti
         self.mi = mi
-        self.scale = scale
-        self.extreme = extreme
         self.more_high_freq = more_high_freq
         self.layer_grads = dict()
         self.layer_masks = dict()
         self.register_hooks = list()
         self.mask_hooks = list()
-        self._register_model()
+        self.scale = scale
+        if self.scale:
+            self._register_model()
         self.u = u
         self.s = s
 
     def _register_model(self):
         def attn_tgr(module, grad_in, grad_out, gamma):
             mask = torch.ones_like(grad_in[0]) * gamma
-            # print(mask.shape)
-            # print(grad_in[0].shape)
-            # print(str(module))
             out_grad = mask * grad_in[0][:]
             return (out_grad, )
 
@@ -535,20 +530,9 @@ class GNS_HFE(BaseAttack):
                 std = np.std(c_mus)
                 muustd = mu + self.u * std
                 c_factor = c_mus > muustd
-                # c_temp = abs(np.tanh((c_mus-mu)/std))
-                if self.s == 2:
-                    c_temp = np.tanh(abs((c_mus-mu)/std))
-                    c_factor = np.array(c_factor).astype(np.float32)
-                    c_factor[c_factor == False] = c_temp[c_factor == False]
-                elif self.s == 1:
-                    c_temp = np.tanh(abs((c_mus-mu)/std))
-                    c_factor = np.array(c_factor).astype(np.float32)
-                    c_factor = c_temp
-                elif self.s == 0:
-                    c_temp = 1 - np.tanh(abs((c_mus-mu)/std))
-                    c_factor = np.array(c_factor).astype(np.float32)
-                    c_factor[c_factor == False] = c_temp[c_factor == False]
-                # print(grad_in[0].shape)
+                c_temp = np.tanh(abs((c_mus-mu)/std))
+                c_factor = np.array(c_factor).astype(np.float32)
+                c_factor[c_factor == False] = c_temp[c_factor == False]
                 grad_in[0][:, :, :, :] = grad_in[0][:, :, :, :] * torch.from_numpy(c_factor).to(grad_in[0].device).view(1, C, 1, 1)
                 
                                     
@@ -558,16 +542,14 @@ class GNS_HFE(BaseAttack):
                 mu = np.mean(c_mus)
                 std = np.std(c_mus)
                 muustd = mu + self.u * std
-                # c_factor = [(c_mus[ix] > mu + self.u * std) for ix in range(c)]
-                if self.s == 3:
-                    c_factor = c_mus <= muustd
-                else:
-                    c_factor = c_mus > muustd
-                grad_in[0][:, :, :] = grad_in[0][:, :, :] * torch.from_numpy(c_factor).float().to(grad_in[0].device).view(1, 1, c)
+                c_factor = c_mus > muustd
+                c_temp = np.tanh(abs((c_mus-mu)/std))
+                c_factor = np.array(c_factor).astype(np.float32)
+                c_factor[c_factor == False] = c_temp[c_factor == False]
+                grad_in[0][:, :, :] = grad_in[0][:, :, :] * torch.from_numpy(c_factor).to(grad_in[0].device).view(1, 1, c)
 
             mask = torch.ones_like(grad_in[0])
             out_grad = mask * grad_in[0][:]
-            # self.layer_grads[name] = out_grad.cpu().numpy()
             return (out_grad, grad_in[1])
 
         def mlp_tgr(module, grad_in, grad_out, gamma):
@@ -580,11 +562,11 @@ class GNS_HFE(BaseAttack):
                     return_dics = return_dics + (grad_in[i],)
             return return_dics
 
-        attn_tgr_hook = partial(attn_tgr, gamma=1)
-        attn_cait_tgr_hook = partial(attn_cait_tgr, gamma=1)
+        attn_tgr_hook = partial(attn_tgr, gamma=0.5)
+        attn_cait_tgr_hook = partial(attn_cait_tgr, gamma=0.5)
         v_tgr_hook = v_tgr
-        q_tgr_hook = partial(q_tgr, gamma=1)
-        mlp_tgr_hook = partial(mlp_tgr, gamma=1)
+        q_tgr_hook = partial(q_tgr, gamma=0.5)
+        mlp_tgr_hook = partial(mlp_tgr, gamma=0.5)
 
         if self.model_name in ['vit_base_patch16_224', 'deit_base_distilled_patch16_224']:
             for i in range(12):
@@ -652,67 +634,61 @@ class GNS_HFE(BaseAttack):
         for hook in self.register_hooks:
             hook.remove()
     
-    def free_register_mask_hooks(self):
-        for hook in self.mask_hooks:
-            hook.remove()
-    
-    def generate_mask(self):
-        grads = None
-        for key in self.layer_grads:
-            self.layer_masks[key] = torch.ones(self.layer_grads[key].shape).cuda()
-            if grads is None:
-                grads = self.layer_grads[key].reshape(-1)
-            else:
-                grads = np.concatenate((grads, self.layer_grads[key].reshape(-1)), axis=0)
-        mu = np.mean(grads)
-        sigma = np.var(grads)
-        for key in self.layer_grads:
-            mu_key = np.mean(self.layer_grads[key])
-            self.layer_masks[key] = (1 + 0.6 * np.tanh((mu_key - mu) / sigma * 2)) * self.layer_masks[key]
-    
-                    
-    def _generate_samples_for_interactions(self, perts, seed):
-        add_noise_mask = torch.zeros_like(perts)
-        grid_num_axis = int(self.image_size/self.crop_length)
-
-        # Unrepeatable sampling
-        ids = [i for i in range(self.max_num_batches)]
-        random.seed(seed)
-        random.shuffle(ids)
-        ids = np.array(ids[:self.sample_num_batches])
-
-        # Repeatable sampling
-        # ids = np.random.randint(0, self.max_num_batches, size=self.sample_num_batches)
-        rows, cols = ids // grid_num_axis, ids % grid_num_axis
-        flag = 0
-        for r, c in zip(rows, cols):
-            add_noise_mask[:, :, r*self.crop_length:(
-                r+1)*self.crop_length, c*self.crop_length:(c+1)*self.crop_length] = 1
-        add_perturbation = perts * add_noise_mask
-        return add_perturbation
-
     
     def forward(self, inps, labels):
         inps = inps.cuda()
         labels = labels.cuda()
-        loss = nn.CrossEntropyLoss()
-
+        grad = 0
         momentum = torch.zeros_like(inps).cuda()
         unnorm_inps = self._mul_std_add_mean(inps)
         perts = torch.zeros_like(unnorm_inps).cuda()
         perts.requires_grad_()
 
         for i in range(self.steps):
+            if self.scale:
+                self.free_register_hooks()
+                self._register_model()
+            noise = 0
+            x = unnorm_inps + perts
+            for n in range(self.N):
+                gauss = torch.randn(
+                    x.size()[0], 3, self.image_width, self.image_width) * (self.sigma / 255)
+                if self.more_high_freq == "noise" or self.more_high_freq == "both":
+                    gauss = dct_2d(gauss)
+                    msk = (np.ones((3,224,224)) * np.arange(224)[:,np.newaxis] * np.arange(224) / 223 / 223)
+                    msk = torch.from_numpy(msk).float()
+                    gauss = gauss * msk
+                    gauss = idct_2d(gauss)
 
-            # add_perturbation = self._generate_samples_for_interactions(perts, i)
-            # outputs = self.model((self._sub_mean_div_std(unnorm_inps + add_perturbation)))
+                gauss = gauss.cuda()
+                x_dct = dct_2d(x + gauss).cuda()
+                if self.more_high_freq == "search" or self.more_high_freq == "both":
+                    msk = (np.ones((3,224,224)) * np.linspace(112,224,224)[:,np.newaxis] * np.linspace(112,224,224) / 224 / 224)
+                    msk = torch.from_numpy(msk).float().cuda()
+                    mask = (torch.rand_like(x) * msk * 2 * self.rho + 1 - self.rho).cuda()
+                else:
+                    mask = (torch.rand_like(x) * 2 * self.rho +
+                            1 - self.rho).cuda()
+                x_idct = idct_2d(x_dct * mask)
+                x_idct = V(x_idct, requires_grad=True)
 
-            # If you use patch out, please uncomment the previous two lines and comment the next line.
+                # DI-FGSM https://arxiv.org/abs/1803.06978
+                # output_v3 = self.model(self._sub_mean_div_std(DI(x_idct)))
 
-            outputs = self.model((self._sub_mean_div_std(unnorm_inps + perts)))
-            cost = self.loss_flag * loss(outputs, labels).cuda()
-            cost.backward()
-            grad = perts.grad.data
+                output_v3 = self.model(self._sub_mean_div_std(x_idct))
+                loss = F.cross_entropy(output_v3, labels)
+                loss.backward()
+                noise += x_idct.grad.data
+            noise = noise / self.N
+            if self.ti:
+                noise = F.conv2d(noise, self.T_kernel, bias=None,
+                                stride=1, padding=(3, 3), groups=3)
+
+            # MI-FGSM https://arxiv.org/pdf/1710.06081.pdf
+            if self.mi:
+                noise = noise / torch.abs(noise).mean([1, 2, 3], keepdim=True)
+                noise = self.momentum * grad + noise
+            grad = noise
             grad = grad / torch.mean(torch.abs(grad),
                                      dim=[1, 2, 3], keepdim=True)
             grad += momentum*self.decay
@@ -720,8 +696,9 @@ class GNS_HFE(BaseAttack):
             perts.data = self._update_perts(perts.data, grad, self.step_size)
             perts.data = torch.clamp(
                 unnorm_inps.data + perts.data, 0.0, 1.0) - unnorm_inps.data
-            perts.grad.data.zero_()
+            
         return (self._sub_mean_div_std(unnorm_inps+perts.data)).detach(), None
+
 
 
 
