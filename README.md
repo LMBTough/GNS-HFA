@@ -3,7 +3,7 @@
 # Enhancing Transferable Adversarial Attacks on Vision Transformers through Gradient Normalization Scaling and High-Frequency Adaptation
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Venue:ICRL 2024](https://img.shields.io/badge/Venue-ICRL%202024-007CFF)](https://openreview.net/pdf?id=1BuWv9poWz)
+[![Venue:ICLR 2024](https://img.shields.io/badge/Venue-ICLR%202024-007CFF)](https://openreview.net/pdf?id=1BuWv9poWz)
 
 </div>
 
